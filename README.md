@@ -1,10 +1,10 @@
 # LEVELS-POS-UI
 
-POS-focused React UI scaffold for a fast-tap bar/dispensary workflow with Clover integration placeholders.
+Modern React UI mockup for a cashier-first LEVELS checkout experience built around Clover payment platform workflows.
 
 ## Goal
 
-Build a cashier-first UI where the most-available items are easiest to tap, cart state is always visible, and handoff to Clover tender is the natural final step.
+Show a modern, efficient payment command center where menu building, cart review, tender selection, terminal readiness, and Clover handoff are visible in one fast cashier workflow.
 
 ## Local setup
 
@@ -17,11 +17,13 @@ npm run dev
 
 - Environment placeholders for Clover API key, merchant ID, and environment.
 - `VITE_CLOVER_MOCK_MODE=true` default so UI can be exercised before credentials exist.
-- Initial POS shell with:
-  - quick-tap favorites sorted by stock
-  - category filters
-  - cart controls with quantity increment/decrement
-  - ticket totals and checkout handoff button
+- Clover-focused mockup with:
+  - terminal readiness and live/mock mode status
+  - shift performance cards for approval speed, throughput, and device health
+  - category filters with large fast-tap catalog cards
+  - persistent cart controls with quantity increment/decrement
+  - tender selection for tap, chip, cash, and gift payments
+  - itemized totals and checkout handoff button
 
 ## Next integration steps once credentials are available
 

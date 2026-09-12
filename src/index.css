@@ -5,7 +5,10 @@
 body {
   margin: 0;
   font-family: Inter, 'Segoe UI', sans-serif;
-  background: radial-gradient(circle at top, #111d30, #090d14 65%);
+  background:
+    radial-gradient(circle at 12% 12%, rgba(141, 241, 194, 0.13), transparent 26%),
+    radial-gradient(circle at 86% 0%, rgba(131, 69, 255, 0.24), transparent 34%),
+    linear-gradient(145deg, #070a12 0%, #0a1020 48%, #06070c 100%);
   color: #eef3fb;
 }
 
