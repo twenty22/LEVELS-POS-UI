@@ -3,6 +3,39 @@
   margin: 16px auto 32px;
 }
 
+.loading-panel,
+.error-panel {
+  min-height: calc(100vh - 48px);
+  display: grid;
+  gap: 10px;
+  place-content: center;
+  text-align: center;
+}
+
+.loading-panel h2,
+.error-panel h2 {
+  margin: 0;
+  color: #ffffff;
+}
+
+.loading-panel p,
+.error-panel p {
+  margin: 0;
+  color: #b3c2da;
+}
+
+.retry-button {
+  justify-self: center;
+  min-height: 44px;
+  border: 1px solid rgba(141, 241, 194, 0.6);
+  border-radius: 12px;
+  padding: 0 16px;
+  background: rgba(141, 241, 194, 0.12);
+  color: #ffffff;
+  font: inherit;
+  font-weight: 700;
+}
+
 .catalog-panel,
 .ticket-panel {
   border: 1px solid rgba(206, 222, 255, 0.14);
@@ -21,6 +54,48 @@
 
 .catalog-panel {
   min-height: calc(100vh - 48px);
+}
+
+.runtime-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.runtime-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  border-radius: 999px;
+  padding: 0 10px;
+  border: 1px solid rgba(206, 222, 255, 0.22);
+  color: #f8fbff;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.runtime-pill.mock {
+  border-color: rgba(250, 204, 21, 0.58);
+  background: rgba(250, 204, 21, 0.16);
+}
+
+.runtime-pill.api {
+  border-color: rgba(96, 165, 250, 0.58);
+  background: rgba(96, 165, 250, 0.16);
+}
+
+.runtime-pill.bridge {
+  border-color: rgba(141, 241, 194, 0.7);
+  background: rgba(141, 241, 194, 0.16);
+}
+
+.runtime-copy {
+  color: #a9b8d0;
+  font-size: 0.84rem;
+  font-weight: 600;
 }
 
 .category-row {
@@ -345,6 +420,33 @@ p {
   letter-spacing: -0.06em;
 }
 
+.status-caption {
+  margin: 0 0 8px;
+  color: #9bb0d2;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.status-banner {
+  margin: 0 0 10px;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.status-banner.error {
+  border: 1px solid rgba(248, 113, 113, 0.46);
+  background: rgba(127, 29, 29, 0.35);
+  color: #fecaca;
+}
+
+.status-banner.success {
+  border: 1px solid rgba(134, 239, 172, 0.5);
+  background: rgba(20, 83, 45, 0.35);
+  color: #dcfce7;
+}
+
 .checkout-button {
   width: 100%;
   min-height: 46px;
@@ -434,5 +536,9 @@ select:focus-visible {
   .ticket-toggle {
     right: 12px;
     bottom: 12px;
+  }
+
+  .runtime-copy {
+    width: 100%;
   }
 }

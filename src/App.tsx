@@ -1,103 +1,377 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import './App.css'
+import type { BootstrapPayload, CatalogItem, MenuSection, PaymentStatus } from './integration/contracts'
+import { createPosClient } from './integration/pos-client'
+import { getRuntimeConfig } from './integration/runtime-config'
 
-type MenuItem = {
-  id: string
-  name: string
-  section: 'Drinks' | 'Dispensary'
-  price: number
-  size?: '1g' | '3.5g'
+type CartRow = CatalogItem & { quantity: number }
+type TicketDraft = {
+  orderId: string | null
+  employeeId: string
+  tenderId: string
+  view: MenuSection
+  cart: Record<string, number>
 }
 
-type Tender = {
-  id: string
-  label: string
-  detail: string
+const runtimeConfig = getRuntimeConfig()
+const posClient = createPosClient(runtimeConfig)
+const menuSections: MenuSection[] = ['Drinks', 'Dispensary']
+const closingStatuses: PaymentStatus[] = ['success', 'partial', 'offline']
+const emptyCatalog: CatalogItem[] = []
+const emptyEmployees: BootstrapPayload['employees'] = []
+const emptyTenders: BootstrapPayload['tenders'] = []
+const ticketDraftStorageKey = 'levels-pos-ticket-draft-v1'
+
+const formatDollars = (cents: number): string => `$${(cents / 100).toFixed(2)}`
+
+const toErrorMessage = (error: unknown): string => {
+  if (error instanceof Error) {
+    return error.message
+  }
+
+  return 'Unexpected Clover integration error'
 }
 
-const menuItems: MenuItem[] = [
-  { id: 'cruzan-confusion', name: 'Cruzan Confusion', section: 'Drinks', price: 15 },
-  { id: 'painkiller', name: 'St. Croix Painkiller', section: 'Drinks', price: 15 },
-  { id: 'bushwacker', name: 'Boardwalk Bushwacker', section: 'Drinks', price: 15 },
-  { id: 'rum-punch', name: 'House Rum Punch', section: 'Drinks', price: 15 },
-  { id: 'soursop-spritz', name: 'Soursop lime spritz', section: 'Drinks', price: 15 },
-  { id: 'island-haze-1g', name: 'Island Haze', section: 'Dispensary', size: '1g', price: 18 },
-  { id: 'island-haze-35g', name: 'Island Haze', section: 'Dispensary', size: '3.5g', price: 52 },
-  { id: 'sunset-sherbet-1g', name: 'Sunset Sherbet', section: 'Dispensary', size: '1g', price: 20 },
-  { id: 'sunset-sherbet-35g', name: 'Sunset Sherbet', section: 'Dispensary', size: '3.5g', price: 56 },
-  { id: 'christiansted-kush-1g', name: 'Christiansted Kush', section: 'Dispensary', size: '1g', price: 19 },
-  { id: 'christiansted-kush-35g', name: 'Christiansted Kush', section: 'Dispensary', size: '3.5g', price: 54 },
-]
+const getRuntimeModeLabel = (runtimeMode: BootstrapPayload['runtimeMode']): string => {
+  if (runtimeMode === 'bridge') {
+    return 'Bridge mode'
+  }
 
-const tenders: Tender[] = [
-  { id: 'tap', label: 'Tap', detail: 'Fastest card flow' },
-  { id: 'chip', label: 'Chip', detail: 'Fallback ready' },
-  { id: 'cash', label: 'Cash', detail: 'Drawer A' },
-  { id: 'gift', label: 'Gift', detail: 'Scan or key in' },
-]
+  if (runtimeMode === 'api') {
+    return 'API mode'
+  }
 
-const bartenders = ['Bartender A', 'Bartender B', 'Bartender C', 'Bartender D'] as const
+  return 'Mock mode'
+}
+
+const getPaymentLabel = (status: PaymentStatus): string => {
+  if (status === 'success') {
+    return 'Approved'
+  }
+
+  if (status === 'partial') {
+    return 'Partially approved'
+  }
+
+  if (status === 'offline') {
+    return 'Offline approved'
+  }
+
+  if (status === 'canceled') {
+    return 'Canceled'
+  }
+
+  return 'Failed'
+}
+
+const restoreTicketDraft = (): TicketDraft | null => {
+  const rawDraft = window.localStorage.getItem(ticketDraftStorageKey)
+  if (!rawDraft) {
+    return null
+  }
+
+  try {
+    const parsedDraft = JSON.parse(rawDraft)
+    if (typeof parsedDraft !== 'object' || parsedDraft === null) {
+      throw new Error('ticket draft must be an object')
+    }
+
+    const draft = parsedDraft as TicketDraft
+    if (draft.view !== 'Drinks' && draft.view !== 'Dispensary') {
+      throw new Error(`invalid draft view "${String(draft.view)}"`)
+    }
+
+    if (typeof draft.employeeId !== 'string' || typeof draft.tenderId !== 'string') {
+      throw new Error('invalid employee or tender values in ticket draft')
+    }
+
+    if (typeof draft.cart !== 'object' || draft.cart === null) {
+      throw new Error('ticket draft cart must be an object map')
+    }
+
+    return draft
+  } catch (error) {
+    console.error('Failed to restore ticket draft', error)
+    window.localStorage.removeItem(ticketDraftStorageKey)
+    return null
+  }
+}
+
+const sanitizeDraftCart = (
+  cart: Record<string, number>,
+  catalogIds: Set<string>,
+): Record<string, number> => {
+  const sanitized: Record<string, number> = {}
+
+  for (const [itemId, quantity] of Object.entries(cart)) {
+    if (!catalogIds.has(itemId)) {
+      continue
+    }
+
+    if (!Number.isInteger(quantity) || quantity <= 0) {
+      continue
+    }
+
+    sanitized[itemId] = quantity
+  }
+
+  return sanitized
+}
 
 function App() {
-  const [activeView, setActiveView] = useState<MenuItem['section']>('Drinks')
-  const [activeTender, setActiveTender] = useState('tap')
-  const [assignedBartender, setAssignedBartender] = useState<string>(bartenders[0])
+  const [bootstrap, setBootstrap] = useState<BootstrapPayload | null>(null)
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null)
+  const [isBootstrapLoading, setIsBootstrapLoading] = useState(true)
+  const [bootstrapAttempt, setBootstrapAttempt] = useState(0)
+  const [activeView, setActiveView] = useState<MenuSection>('Drinks')
+  const [activeTender, setActiveTender] = useState('')
+  const [assignedEmployeeId, setAssignedEmployeeId] = useState('')
+  const [currentOrderId, setCurrentOrderId] = useState<string | null>(null)
+  const [lastPaymentStatus, setLastPaymentStatus] = useState<PaymentStatus | null>(null)
+  const [isCheckoutPending, setIsCheckoutPending] = useState(false)
+  const [checkoutError, setCheckoutError] = useState<string | null>(null)
+  const [checkoutNotice, setCheckoutNotice] = useState<string | null>(null)
   const [isTicketOpen, setIsTicketOpen] = useState(false)
-  const [cart, setCart] = useState<Record<string, number>>({
-    'cruzan-confusion': 2,
-    'sunset-sherbet-1g': 1,
-  })
+  const [cart, setCart] = useState<Record<string, number>>({})
 
-  const views = ['Drinks', 'Dispensary'] as const
+  useEffect(() => {
+    let alive = true
+
+    const loadBootstrap = async () => {
+      setIsBootstrapLoading(true)
+      setBootstrapError(null)
+
+      try {
+        const payload = await posClient.getBootstrap()
+
+        if (!alive) {
+          return
+        }
+
+        const restoredDraft = restoreTicketDraft()
+        const catalogIds = new Set(payload.catalog.map((item) => item.id))
+        const restoredEmployeeId =
+          restoredDraft?.employeeId && payload.employees.some((employee) => employee.id === restoredDraft.employeeId)
+            ? restoredDraft.employeeId
+            : payload.employees[0]?.id ?? ''
+        const restoredTenderId =
+          restoredDraft?.tenderId && payload.tenders.some((tender) => tender.id === restoredDraft.tenderId)
+            ? restoredDraft.tenderId
+            : payload.tenders[0]?.id ?? ''
+        const restoredView = restoredDraft?.view ?? 'Drinks'
+        const restoredCart = restoredDraft ? sanitizeDraftCart(restoredDraft.cart, catalogIds) : {}
+
+        setBootstrap(payload)
+        setAssignedEmployeeId(restoredEmployeeId)
+        setActiveTender(restoredTenderId)
+        setActiveView(restoredView)
+        setCart(restoredCart)
+        setCurrentOrderId(restoredDraft?.orderId ?? null)
+      } catch (error) {
+        if (!alive) {
+          return
+        }
+
+        setBootstrapError(toErrorMessage(error))
+      } finally {
+        if (alive) {
+          setIsBootstrapLoading(false)
+        }
+      }
+    }
+
+    void loadBootstrap()
+
+    return () => {
+      alive = false
+    }
+  }, [bootstrapAttempt])
+
+  const catalog = bootstrap?.catalog ?? emptyCatalog
+  const employees = bootstrap?.employees ?? emptyEmployees
+  const tenders = bootstrap?.tenders ?? emptyTenders
+
+  const catalogById = useMemo(() => new Map(catalog.map((item) => [item.id, item])), [catalog])
 
   const visibleItems = useMemo(
-    () => menuItems.filter((item) => item.section === activeView),
-    [activeView],
+    () => catalog.filter((item) => item.section === activeView),
+    [activeView, catalog],
   )
 
-  const cartRows = useMemo(
-    () =>
-      menuItems
-        .filter((item) => cart[item.id])
-        .map((item) => ({ ...item, quantity: cart[item.id] })),
-    [cart],
-  )
+  const cartRows: CartRow[] = Object.entries(cart)
+    .map(([itemId, quantity]) => {
+      const item = catalogById.get(itemId)
+      if (!item) {
+        return null
+      }
 
-  const total = cartRows.reduce((sum, row) => sum + row.price * row.quantity, 0)
+      return { ...item, quantity }
+    })
+    .filter((row): row is CartRow => row !== null)
+
+  const totalCents = cartRows.reduce((sum, row) => sum + row.priceCents * row.quantity, 0)
   const itemCount = cartRows.reduce((sum, row) => sum + row.quantity, 0)
 
+  useEffect(() => {
+    if (!bootstrap) {
+      return
+    }
+
+    if (itemCount === 0 && !currentOrderId) {
+      window.localStorage.removeItem(ticketDraftStorageKey)
+      return
+    }
+
+    const draft: TicketDraft = {
+      orderId: currentOrderId,
+      employeeId: assignedEmployeeId,
+      tenderId: activeTender,
+      view: activeView,
+      cart,
+    }
+
+    window.localStorage.setItem(ticketDraftStorageKey, JSON.stringify(draft))
+  }, [activeTender, activeView, assignedEmployeeId, bootstrap, cart, currentOrderId, itemCount])
+
   const addItem = (itemId: string) => {
-    setCart((prev) => ({ ...prev, [itemId]: (prev[itemId] ?? 0) + 1 }))
+    setCheckoutError(null)
+    setCheckoutNotice(null)
+    setCart((previous) => ({ ...previous, [itemId]: (previous[itemId] ?? 0) + 1 }))
   }
 
   const removeItem = (itemId: string) => {
-    setCart((prev) => {
-      const next = { ...prev }
-      const current = next[itemId] ?? 0
+    setCheckoutError(null)
+    setCheckoutNotice(null)
+    setCart((previous) => {
+      const next = { ...previous }
+      const quantity = next[itemId] ?? 0
 
-      if (current <= 1) {
+      if (quantity <= 1) {
         delete next[itemId]
       } else {
-        next[itemId] = current - 1
+        next[itemId] = quantity - 1
       }
 
       return next
     })
   }
 
+  const submitCheckout = async () => {
+    if (!bootstrap) {
+      setCheckoutError('Clover bootstrap has not completed yet')
+      return
+    }
+
+    if (!assignedEmployeeId) {
+      setCheckoutError('Select a bartender account before sending payment')
+      return
+    }
+
+    if (!activeTender) {
+      setCheckoutError('Select a tender before sending payment')
+      return
+    }
+
+    if (cartRows.length === 0) {
+      setCheckoutError('Add at least one menu item before sending payment')
+      return
+    }
+
+    setIsCheckoutPending(true)
+    setCheckoutError(null)
+    setCheckoutNotice(null)
+
+    try {
+      const order = await posClient.upsertOrder({
+        orderId: currentOrderId ?? undefined,
+        employeeId: assignedEmployeeId,
+        lines: cartRows.map((row) => ({ itemId: row.id, quantity: row.quantity })),
+      })
+
+      setCurrentOrderId(order.orderId)
+
+      const payment = await posClient.startPayment({
+        orderId: order.orderId,
+        amountCents: order.totalCents,
+        tenderId: activeTender,
+        employeeId: assignedEmployeeId,
+      })
+
+      setLastPaymentStatus(payment.status)
+
+      if (!closingStatuses.includes(payment.status)) {
+        setCheckoutError(payment.message ?? `Payment ${getPaymentLabel(payment.status).toLowerCase()}`)
+        return
+      }
+
+      await posClient.finalizeOrder({
+        orderId: order.orderId,
+        paymentId: payment.paymentId ?? null,
+        paymentStatus: payment.status,
+      })
+
+      setCheckoutNotice(`Payment ${getPaymentLabel(payment.status).toLowerCase()}. Ticket closed.`)
+      setCart({})
+      setCurrentOrderId(null)
+      setIsTicketOpen(false)
+      window.localStorage.removeItem(ticketDraftStorageKey)
+    } catch (error) {
+      setCheckoutError(toErrorMessage(error))
+    } finally {
+      setIsCheckoutPending(false)
+    }
+  }
+
+  if (isBootstrapLoading) {
+    return (
+      <main className="app-shell">
+        <section className="catalog-panel loading-panel" aria-live="polite">
+          <h2>Loading Clover session…</h2>
+          <p>Preparing catalog, employees, and device capabilities.</p>
+        </section>
+      </main>
+    )
+  }
+
+  if (bootstrapError || !bootstrap) {
+    return (
+      <main className="app-shell">
+        <section className="catalog-panel error-panel" aria-live="assertive">
+          <h2>Could not load Clover bootstrap</h2>
+          <p>{bootstrapError ?? 'Bootstrap payload was empty'}</p>
+          <button
+            type="button"
+            className="retry-button"
+            onClick={() => setBootstrapAttempt((attempt) => attempt + 1)}
+          >
+            Retry
+          </button>
+        </section>
+      </main>
+    )
+  }
+
   return (
     <main className="app-shell">
       <section className="workspace-grid">
         <section className="catalog-panel" aria-label="Menu">
+          <div className="runtime-strip" aria-live="polite">
+            <span className={`runtime-pill ${bootstrap.runtimeMode}`}>{getRuntimeModeLabel(bootstrap.runtimeMode)}</span>
+            <span className="runtime-copy">
+              {bootstrap.merchant.displayName} · {bootstrap.device.productName} ({bootstrap.device.model}) · Tax{' '}
+              {bootstrap.merchant.taxMode === 'none' ? 'disabled' : 'configured'}
+            </span>
+          </div>
+
           <div className="category-row" aria-label="Filter menu sections">
-            {views.map((view) => (
+            {menuSections.map((section) => (
               <button
-                key={view}
+                key={section}
                 type="button"
-                className={view === activeView ? 'filter-pill active' : 'filter-pill'}
-                onClick={() => setActiveView(view)}
+                className={section === activeView ? 'filter-pill active' : 'filter-pill'}
+                onClick={() => setActiveView(section)}
               >
-                {view}
+                {section}
               </button>
             ))}
           </div>
@@ -105,17 +379,13 @@ function App() {
           <section className="menu-section">
             <div className="item-grid">
               {visibleItems.map((item) => (
-                <article
-                  key={item.id}
-                  className="item-card"
-                  onClick={() => addItem(item.id)}
-                >
+                <article key={item.id} className="item-card" onClick={() => addItem(item.id)}>
                   <div className="item-meta">
                     <h3>{item.name}</h3>
                     <p>{item.size ?? 'Cocktail'}</p>
                   </div>
                   <div className="item-actions">
-                    <strong>${item.price.toFixed(2)}</strong>
+                    <strong>{formatDollars(item.priceCents)}</strong>
                     <button
                       type="button"
                       onClick={(event) => {
@@ -161,7 +431,7 @@ function App() {
         <div className="drawer-heading">
           <div>
             <p className="eyebrow">Current ticket</p>
-            <h2>Order #1050</h2>
+            <h2>Order {currentOrderId ?? 'Pending'}</h2>
           </div>
           <div className="drawer-heading-actions">
             <span className="item-count">{itemCount} items</span>
@@ -174,15 +444,19 @@ function App() {
         <label className="employee-field">
           Bartender
           <select
-            value={assignedBartender}
-            onChange={(event) => setAssignedBartender(event.target.value)}
+            value={assignedEmployeeId}
+            onChange={(event) => setAssignedEmployeeId(event.target.value)}
             aria-label="Select bartender account"
           >
-            {bartenders.map((bartender) => (
-              <option key={bartender} value={bartender}>
-                {bartender}
-              </option>
-            ))}
+            {employees.length === 0 ? (
+              <option value="">No employee accounts loaded</option>
+            ) : (
+              employees.map((employee) => (
+                <option key={employee.id} value={employee.id}>
+                  {employee.name}
+                </option>
+              ))
+            )}
           </select>
         </label>
 
@@ -196,8 +470,11 @@ function App() {
             {cartRows.map((row) => (
               <li key={row.id}>
                 <div>
-                  <p>{row.name}{row.size ? ` (${row.size})` : ''}</p>
-                  <span>${row.price.toFixed(2)} each</span>
+                  <p>
+                    {row.name}
+                    {row.size ? ` (${row.size})` : ''}
+                  </p>
+                  <span>{formatDollars(row.priceCents)} each</span>
                 </div>
                 <div className="quantity-stepper" aria-label={`${row.name} quantity`}>
                   <button type="button" onClick={() => removeItem(row.id)} aria-label={`Remove one ${row.name}`}>
@@ -229,11 +506,22 @@ function App() {
 
         <div className="due-now">
           <span>Due now</span>
-          <strong>${total.toFixed(2)}</strong>
+          <strong>{formatDollars(totalCents)}</strong>
         </div>
 
-        <button type="button" className="checkout-button" disabled={cartRows.length === 0}>
-          Send ${total.toFixed(2)} to Clover
+        {lastPaymentStatus ? <p className="status-caption">Last payment: {getPaymentLabel(lastPaymentStatus)}</p> : null}
+        {checkoutError ? <p className="status-banner error">{checkoutError}</p> : null}
+        {checkoutNotice ? <p className="status-banner success">{checkoutNotice}</p> : null}
+
+        <button
+          type="button"
+          className="checkout-button"
+          disabled={cartRows.length === 0 || isCheckoutPending}
+          onClick={() => {
+            void submitCheckout()
+          }}
+        >
+          {isCheckoutPending ? 'Processing Clover payment…' : `Send ${formatDollars(totalCents)} to Clover`}
         </button>
       </aside>
     </main>
