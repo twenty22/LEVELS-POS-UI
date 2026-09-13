@@ -1,0 +1,346 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "LEVELS Clover Flex Load and Payment Roundtrip",
+    "output": "docs/diagrams/flex-payment-roundtrip.html",
+    "viewBox": [1540, 980],
+    "column_fit": "spread",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "launch-bootstrap",
+        "label": "Launch and bootstrap",
+        "focus": ["cashier", "launcher", "host", "webui", "bridge", "bff"],
+        "note": "Shows app load, bridge initialization, and session hydration on Flex."
+      },
+      {
+        "id": "order-sync",
+        "label": "Order synchronization",
+        "focus": ["webui", "bff", "clover"],
+        "note": "Ticket operations flow from UI through BFF to Clover orders."
+      },
+      {
+        "id": "pay-and-recover",
+        "label": "Payment and recovery outcomes",
+        "focus": ["webui", "bridge", "payapp", "bff", "clover"],
+        "note": "Covers success plus cancel, timeout, and offline recovery branch."
+      }
+    ]
+  },
+  "participants": [
+    {
+      "id": "cashier",
+      "type": "external",
+      "label": "Cashier"
+    },
+    {
+      "id": "launcher",
+      "type": "frontend",
+      "label": "Clover Launcher"
+    },
+    {
+      "id": "host",
+      "type": "backend",
+      "label": "Flex Host"
+    },
+    {
+      "id": "webui",
+      "type": "frontend",
+      "label": "React UI"
+    },
+    {
+      "id": "bridge",
+      "type": "security",
+      "label": "Bridge API"
+    },
+    {
+      "id": "payapp",
+      "type": "cloud",
+      "label": "Clover Pay"
+    },
+    {
+      "id": "bff",
+      "type": "backend",
+      "label": "LEVELS BFF"
+    },
+    {
+      "id": "clover",
+      "type": "cloud",
+      "label": "Clover APIs"
+    }
+  ],
+  "segments": [
+    {
+      "from": 156,
+      "to": 410,
+      "label": "Launch + bootstrap"
+    },
+    {
+      "from": 420,
+      "to": 560,
+      "label": "Order sync"
+    },
+    {
+      "from": 566,
+      "to": 790,
+      "label": "Payment + closeout"
+    },
+    {
+      "from": 800,
+      "to": 900,
+      "label": "Failure branch"
+    }
+  ],
+  "messages": [
+    {
+      "id": "launch-tap",
+      "from": "cashier",
+      "to": "launcher",
+      "y": 170,
+      "label": "tap LEVELS POS app",
+      "variant": "emphasis"
+    },
+    {
+      "id": "open-host",
+      "from": "launcher",
+      "to": "host",
+      "y": 198,
+      "label": "start host activity",
+      "variant": "default"
+    },
+    {
+      "id": "load-webui",
+      "from": "host",
+      "to": "webui",
+      "y": 226,
+      "label": "load packaged dist/index.html",
+      "variant": "emphasis"
+    },
+    {
+      "id": "bridge-bootstrap",
+      "from": "webui",
+      "to": "bridge",
+      "y": 254,
+      "label": "bridge.getBootstrapContext()",
+      "variant": "security"
+    },
+    {
+      "id": "bootstrap-request",
+      "from": "bridge",
+      "to": "bff",
+      "y": 282,
+      "label": "request merchant/session config",
+      "variant": "default"
+    },
+    {
+      "id": "bootstrap-clover",
+      "from": "bff",
+      "to": "clover",
+      "y": 310,
+      "label": "fetch catalog + employees",
+      "variant": "default"
+    },
+    {
+      "id": "bootstrap-clover-return",
+      "from": "clover",
+      "to": "bff",
+      "y": 338,
+      "label": "catalog + employee payload",
+      "variant": "return"
+    },
+    {
+      "id": "bootstrap-return",
+      "from": "bff",
+      "to": "bridge",
+      "y": 366,
+      "label": "bootstrap context",
+      "variant": "return"
+    },
+    {
+      "id": "hydrate-ui",
+      "from": "bridge",
+      "to": "webui",
+      "y": 394,
+      "label": "hydrate app session",
+      "variant": "return"
+    },
+    {
+      "id": "order-upsert",
+      "from": "webui",
+      "to": "bff",
+      "y": 436,
+      "label": "create/update order + lines",
+      "variant": "emphasis"
+    },
+    {
+      "id": "order-clover",
+      "from": "bff",
+      "to": "clover",
+      "y": 468,
+      "label": "orders API operations",
+      "variant": "default"
+    },
+    {
+      "id": "order-clover-return",
+      "from": "clover",
+      "to": "bff",
+      "y": 500,
+      "label": "order id + totals",
+      "variant": "return"
+    },
+    {
+      "id": "order-sync-return",
+      "from": "bff",
+      "to": "webui",
+      "y": 532,
+      "label": "synced ticket state",
+      "variant": "return"
+    },
+    {
+      "id": "pay-request",
+      "from": "webui",
+      "to": "bridge",
+      "y": 576,
+      "label": "startPayment(orderId)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "invoke-pay-app",
+      "from": "bridge",
+      "to": "payapp",
+      "y": 608,
+      "label": "launch PaymentRequestIntentBuilder",
+      "variant": "security"
+    },
+    {
+      "id": "pay-result",
+      "from": "payapp",
+      "to": "bridge",
+      "y": 644,
+      "label": "success/partial/cancel/offline result",
+      "variant": "return"
+    },
+    {
+      "id": "pay-result-ui",
+      "from": "bridge",
+      "to": "webui",
+      "y": 676,
+      "label": "normalized payment outcome",
+      "variant": "return"
+    },
+    {
+      "id": "close-ticket",
+      "from": "webui",
+      "to": "bff",
+      "y": 708,
+      "label": "close ticket + receipt selection",
+      "variant": "default"
+    },
+    {
+      "id": "close-clover",
+      "from": "bff",
+      "to": "clover",
+      "y": 740,
+      "label": "finalize order/payment record",
+      "variant": "default"
+    },
+    {
+      "id": "close-ticket-return",
+      "from": "bff",
+      "to": "webui",
+      "y": 772,
+      "label": "ticket closed",
+      "variant": "return"
+    },
+    {
+      "id": "failure-details",
+      "from": "payapp",
+      "to": "bridge",
+      "y": 826,
+      "label": "timeout/cancel/offline detail",
+      "variant": "dashed"
+    },
+    {
+      "id": "retry-options",
+      "from": "bridge",
+      "to": "webui",
+      "y": 862,
+      "label": "resume with idempotent retry actions",
+      "variant": "dashed"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "launcher",
+      "from": 192,
+      "to": 204,
+      "type": "frontend"
+    },
+    {
+      "participant": "host",
+      "from": 220,
+      "to": 236,
+      "type": "backend"
+    },
+    {
+      "participant": "webui",
+      "from": 248,
+      "to": 780,
+      "type": "frontend"
+    },
+    {
+      "participant": "bridge",
+      "from": 250,
+      "to": 872,
+      "type": "security"
+    },
+    {
+      "participant": "bff",
+      "from": 278,
+      "to": 776,
+      "type": "backend"
+    },
+    {
+      "participant": "clover",
+      "from": 306,
+      "to": 750,
+      "type": "cloud"
+    },
+    {
+      "participant": "payapp",
+      "from": 604,
+      "to": 834,
+      "type": "cloud"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Load and bootstrap on Flex",
+      "items": [
+        "The host app starts from Clover launcher and loads local WebView assets",
+        "Bridge bootstrap gates runtime by Flex capabilities before checkout",
+        "Session config flows from BFF to UI through bridge APIs"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Payment path",
+      "items": [
+        "Order state syncs through BFF and Clover Orders APIs",
+        "Payment starts in bridge and executes in native Clover Pay app",
+        "Result is normalized and then reconciled for ticket closeout"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Recovery branch",
+      "items": [
+        "Cancel, timeout, and offline outcomes are explicit branch messages",
+        "UI receives retry-safe actions backed by idempotent keys",
+        "Failure handling preserves cashier continuity without duplicate charges"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,220 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "LEVELS Clover Flex System Interactions",
+    "output": "docs/diagrams/flex-system-interactions.html",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "launch-and-bootstrap",
+        "label": "Launch and bootstrap path",
+        "focus": ["cashier", "launcher", "host", "webui", "bridge", "bff"],
+        "note": "Shows how the app loads on Flex and hydrates session context."
+      },
+      {
+        "id": "payment-roundtrip",
+        "label": "Payment roundtrip",
+        "focus": ["webui", "bridge", "payapp", "bff", "clover"],
+        "note": "Native Clover payment is invoked by bridge and reconciled through BFF."
+      },
+      {
+        "id": "security-and-ops",
+        "label": "Security and telemetry boundaries",
+        "focus": ["bridge", "bff", "clover", "obs"],
+        "note": "Clover credentials stay server-side; telemetry is structured for audit."
+      }
+    ]
+  },
+  "layout": {
+    "mode": "grid",
+    "origin": [60, 120],
+    "cols": 6,
+    "gapX": 34,
+    "gapY": 74,
+    "cellW": 160,
+    "cellH": 78
+  },
+  "components": [
+    {
+      "id": "cashier",
+      "type": "external",
+      "label": "Cashier",
+      "sublabel": "LEVELS staff",
+      "row": 1,
+      "col": 0
+    },
+    {
+      "id": "launcher",
+      "type": "frontend",
+      "label": "Clover Launcher",
+      "sublabel": "app shell",
+      "row": 1,
+      "col": 1
+    },
+    {
+      "id": "host",
+      "type": "backend",
+      "label": "Flex Host App",
+      "sublabel": "Android host",
+      "row": 1,
+      "col": 2
+    },
+    {
+      "id": "webui",
+      "type": "frontend",
+      "label": "Embedded React UI",
+      "sublabel": "WebView UI",
+      "row": 2,
+      "col": 2
+    },
+    {
+      "id": "bridge",
+      "type": "security",
+      "label": "Bridge API",
+      "sublabel": "device actions",
+      "row": 1,
+      "col": 3
+    },
+    {
+      "id": "payapp",
+      "type": "cloud",
+      "label": "Clover Payment App",
+      "sublabel": "native pay",
+      "row": 2,
+      "col": 3
+    },
+    {
+      "id": "bff",
+      "type": "backend",
+      "label": "LEVELS BFF",
+      "sublabel": "Clover REST proxy",
+      "row": 1,
+      "col": 4
+    },
+    {
+      "id": "clover",
+      "type": "cloud",
+      "label": "Clover APIs",
+      "sublabel": "platform APIs",
+      "row": 1,
+      "col": 5
+    },
+    {
+      "id": "obs",
+      "type": "messagebus",
+      "label": "Observability Store",
+      "sublabel": "audit events",
+      "row": 2,
+      "col": 4
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Clover Flex Device (C401 / C403)",
+      "wraps": ["launcher", "host", "webui", "bridge", "payapp"]
+    },
+    {
+      "kind": "region",
+      "label": "Cloud Services",
+      "wraps": ["bff", "clover", "obs"]
+    },
+    {
+      "kind": "security-group",
+      "label": "Token and credential boundary",
+      "wraps": ["bff"]
+    }
+  ],
+  "connections": [
+    {
+      "id": "cashier-launcher",
+      "from": "cashier",
+      "to": "launcher",
+      "variant": "emphasis"
+    },
+    {
+      "id": "launcher-host",
+      "from": "launcher",
+      "to": "host"
+    },
+    {
+      "id": "host-webui-load",
+      "from": "host",
+      "to": "webui",
+      "label": "load UI",
+      "labelDy": 24
+    },
+    {
+      "id": "webui-bridge-init",
+      "from": "webui",
+      "to": "bridge",
+      "variant": "security"
+    },
+    {
+      "id": "bridge-bff-bootstrap",
+      "from": "bridge",
+      "to": "bff"
+    },
+    {
+      "id": "bff-clover-rest",
+      "from": "bff",
+      "to": "clover",
+      "label": "REST",
+      "variant": "security"
+    },
+    {
+      "id": "bridge-payapp",
+      "from": "bridge",
+      "to": "payapp",
+      "variant": "emphasis"
+    },
+    {
+      "id": "payapp-bridge-callback",
+      "from": "payapp",
+      "to": "bridge",
+      "variant": "dashed"
+    },
+    {
+      "id": "bridge-webui-outcome",
+      "from": "bridge",
+      "to": "webui",
+      "variant": "dashed"
+    },
+    {
+      "id": "bff-obs-events",
+      "from": "bff",
+      "to": "obs",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Flex App Load Path",
+      "items": [
+        "Cashier launches from Clover launcher on C401/C403",
+        "Host activity boots and loads packaged React assets in WebView",
+        "Bridge initializes capability and bootstrap context before checkout"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Checkout Execution",
+      "items": [
+        "React UI handles ticket assembly and operator workflow",
+        "BFF mediates Clover REST order and catalog operations",
+        "Bridge invokes native Clover payment and returns normalized outcomes"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Security and Observability",
+      "items": [
+        "Clover tokens remain in the BFF security boundary",
+        "Payment stays in native Clover card-present flow",
+        "Event streams include device, order, payment, and employee identifiers"
+      ]
+    }
+  ]
+}

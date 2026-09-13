@@ -39,3 +39,7 @@ npm run dev
 - `npm run build` – type-check + production build
 - `npm run lint` – oxlint
 - `npm run preview` – serve production build locally
+
+## Integration design spec
+
+- [design_spec.md](./design_spec.md) — Clover Flex integration architecture, device load/run lifecycle, and system interaction diagrams.
